@@ -1,0 +1,145 @@
+CREATE DATABASE fifa_world_cup;
+USE fifa_world_cup;
+
+-- ------------------------------------------------------------
+-- 1. COUNTRIES / TEAMS
+-- ------------------------------------------------------------
+CREATE TABLE Teams (
+    team_id        INT AUTO_INCREMENT PRIMARY KEY,
+    team_name      VARCHAR(50) NOT NULL UNIQUE,
+    confederation  VARCHAR(10) NOT NULL CHECK (confederation IN ('UEFA','CONMEBOL','CONCACAF','CAF','AFC','OFC')),
+    fifa_ranking   INT,
+    coach_name     VARCHAR(60),
+    home_kit_color VARCHAR(20)
+);
+
+-- ------------------------------------------------------------
+-- 2. STADIUMS
+-- ------------------------------------------------------------
+CREATE TABLE Stadiums (
+    stadium_id   INT AUTO_INCREMENT PRIMARY KEY,
+    stadium_name VARCHAR(80) NOT NULL,
+    city         VARCHAR(50) NOT NULL,
+    country      VARCHAR(50) NOT NULL,
+    capacity     INT NOT NULL CHECK (capacity > 0)
+);
+
+-- ------------------------------------------------------------
+-- 3. REFEREES
+-- ------------------------------------------------------------
+CREATE TABLE Referees (
+    referee_id   INT AUTO_INCREMENT PRIMARY KEY,
+    referee_name VARCHAR(60) NOT NULL,
+    country      VARCHAR(50) NOT NULL
+);
+
+-- ------------------------------------------------------------
+-- 4. PLAYERS
+-- ------------------------------------------------------------
+CREATE TABLE Players (
+    player_id      INT AUTO_INCREMENT PRIMARY KEY,
+    team_id        INT NOT NULL,
+    player_name    VARCHAR(60) NOT NULL,
+    jersey_number  INT NOT NULL CHECK (jersey_number BETWEEN 1 AND 99),
+    position       VARCHAR(20) NOT NULL CHECK (position IN ('Goalkeeper','Defender','Midfielder','Forward')),
+    date_of_birth  DATE,
+    is_captain     BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (team_id) REFERENCES Teams(team_id) ON DELETE CASCADE,
+    UNIQUE (team_id, jersey_number)
+);
+
+-- ------------------------------------------------------------
+-- 5. GROUPS (Group A, B, C ...)
+-- ------------------------------------------------------------
+CREATE TABLE Tournament_Groups (
+    group_id   INT AUTO_INCREMENT PRIMARY KEY,
+    group_name VARCHAR(5) NOT NULL UNIQUE   -- e.g. 'A','B','C'
+);
+
+-- ------------------------------------------------------------
+-- 6. GROUP <-> TEAM mapping
+-- ------------------------------------------------------------
+CREATE TABLE Group_Teams (
+    group_id INT NOT NULL,
+    team_id  INT NOT NULL,
+    PRIMARY KEY (group_id, team_id),
+    FOREIGN KEY (group_id) REFERENCES Tournament_Groups(group_id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id)  REFERENCES Teams(team_id) ON DELETE CASCADE
+);
+
+-- ------------------------------------------------------------
+-- 7. MATCHES
+-- ------------------------------------------------------------
+CREATE TABLE Matches (
+    match_id     INT AUTO_INCREMENT PRIMARY KEY,
+    stage        VARCHAR(20) NOT NULL CHECK (stage IN
+                   ('Group Stage','Round of 16','Quarter Final','Semi Final','Third Place','Final')),
+    group_id     INT NULL,                      -- NULL for knockout matches
+    team1_id     INT NOT NULL,
+    team2_id     INT NOT NULL,
+    stadium_id   INT NOT NULL,
+    referee_id   INT NOT NULL,
+    match_date   DATETIME NOT NULL,
+    team1_score  INT DEFAULT 0,
+    team2_score  INT DEFAULT 0,
+    status       VARCHAR(15) DEFAULT 'Scheduled' CHECK (status IN ('Scheduled','Completed','Postponed')),
+    FOREIGN KEY (group_id)   REFERENCES Tournament_Groups(group_id),
+    FOREIGN KEY (team1_id)   REFERENCES Teams(team_id),
+    FOREIGN KEY (team2_id)   REFERENCES Teams(team_id),
+    FOREIGN KEY (stadium_id) REFERENCES Stadiums(stadium_id),
+    FOREIGN KEY (referee_id) REFERENCES Referees(referee_id),
+    CHECK (team1_id <> team2_id)
+);
+
+-- ------------------------------------------------------------
+-- 8. GOALS
+-- ------------------------------------------------------------
+CREATE TABLE Goals (
+    goal_id     INT AUTO_INCREMENT PRIMARY KEY,
+    match_id    INT NOT NULL,
+    player_id   INT NOT NULL,
+    team_id     INT NOT NULL,
+    goal_minute INT NOT NULL CHECK (goal_minute BETWEEN 1 AND 120),
+    goal_type   VARCHAR(15) DEFAULT 'Normal' CHECK (goal_type IN ('Normal','Penalty','Own Goal','Free Kick')),
+    FOREIGN KEY (match_id)  REFERENCES Matches(match_id) ON DELETE CASCADE,
+    FOREIGN KEY (player_id) REFERENCES Players(player_id),
+    FOREIGN KEY (team_id)   REFERENCES Teams(team_id)
+);
+
+-- ------------------------------------------------------------
+-- 9. CARDS (Yellow / Red)
+-- ------------------------------------------------------------
+CREATE TABLE Cards (
+    card_id     INT AUTO_INCREMENT PRIMARY KEY,
+    match_id    INT NOT NULL,
+    player_id   INT NOT NULL,
+    card_type   VARCHAR(10) NOT NULL CHECK (card_type IN ('Yellow','Red')),
+    card_minute INT NOT NULL CHECK (card_minute BETWEEN 1 AND 120),
+    FOREIGN KEY (match_id)  REFERENCES Matches(match_id) ON DELETE CASCADE,
+    FOREIGN KEY (player_id) REFERENCES Players(player_id)
+);
+
+-- ------------------------------------------------------------
+-- 10. GROUP STANDINGS (maintained via query/view, kept as table
+--     here for simplicity in case triggers are used to update it)
+-- ------------------------------------------------------------
+CREATE TABLE Group_Standings (
+    group_id        INT NOT NULL,
+    team_id         INT NOT NULL,
+    played          INT DEFAULT 0,
+    won             INT DEFAULT 0,
+    drawn           INT DEFAULT 0,
+    lost            INT DEFAULT 0,
+    goals_for       INT DEFAULT 0,
+    goals_against   INT DEFAULT 0,
+    goal_difference INT DEFAULT 0,
+    points          INT DEFAULT 0,
+    PRIMARY KEY (group_id, team_id),
+    FOREIGN KEY (group_id) REFERENCES Tournament_Groups(group_id),
+    FOREIGN KEY (team_id)  REFERENCES Teams(team_id)
+);
+
+-- Helpful indexes
+CREATE INDEX idx_matches_date   ON Matches(match_date);
+CREATE INDEX idx_players_team   ON Players(team_id);
+CREATE INDEX idx_goals_player   ON Goals(player_id);
